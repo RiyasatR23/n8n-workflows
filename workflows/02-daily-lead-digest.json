@@ -1,0 +1,187 @@
+{
+  "name": "Echo · Daily lead digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "91abdd73-4867-4399-ab80-ee15f1b4cce6",
+      "name": "Every day 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a7fe4879-5d4d-41cb-b578-6fb68ec3d426",
+              "name": "ownerEmail",
+              "value": "you@yourbusiness.co.za",
+              "type": "string"
+            },
+            {
+              "id": "c2ac9e2f-a54c-43c6-a535-1c0fc2bcd9a1",
+              "name": "fromEmail",
+              "value": "Echo Leads <leads@yourdomain.co.za>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5b868691-f832-455b-a0a6-45221804dc56",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "leads",
+        "returnAll": true,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "created_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ hours: 24 }).toISO() }}"
+            }
+          ]
+        }
+      },
+      "id": "0ab52993-e200-4273-a00f-859d90b2bbb2",
+      "name": "Get last 24h of leads",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Group yesterday's leads by score and build one HTML email (also sent when there are none)\nconst leads = $input.all().map(i => i.json).filter(l => l && l.email);\nconst order = { hot: 0, warm: 1, cold: 2 };\nleads.sort((a, b) => (order[a.score] ?? 3) - (order[b.score] ?? 3));\nconst count = s => leads.filter(l => l.score === s).length;\nconst esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));\nconst rows = leads.map(l => `<tr><td>${l.score === 'hot' ? '🔥 ' : ''}${esc(l.score)}</td>\n  <td><b>${esc(l.name)}</b><br>${esc(l.email)}</td><td>${esc(l.service)}</td><td>${esc(l.summary)}</td></tr>`).join('');\nconst html = leads.length === 0\n  ? '<p>No new leads in the last 24 hours. Time to do some outreach 💪</p>'\n  : `<p><b>${leads.length}</b> new leads: 🔥 ${count('hot')} hot · ${count('warm')} warm · ${count('cold')} cold</p>\n     <table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;font-family:sans-serif;font-size:14px\">\n     <tr style=\"background:#2c0a94;color:#fff\"><th>Score</th><th>Lead</th><th>Service</th><th>Summary</th></tr>${rows}</table>`;\nconst subject = `Lead digest ${$now.toFormat('dd LLL')}: ${leads.length} new (${count('hot')} hot)`;\nreturn [{ json: { subject, html } }];"
+      },
+      "id": "88b914fb-465d-4e32-85c0-fd04bc82a2ca",
+      "name": "Build digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: $json.subject, html: $json.html }) }}",
+        "options": {}
+      },
+      "id": "18972d3c-ce86-4c41-aac7-69e2e2218796",
+      "name": "Email the digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📬 Daily lead digest\nEvery morning at 08:00 (Johannesburg time) it pulls the last 24 hours of leads from Supabase, sorts them hot → cold and emails one summary table. It still emails on quiet days, so silence never hides a broken form.",
+        "height": 200,
+        "width": 520,
+        "color": 5
+      },
+      "id": "fc9fac93-6647-46dd-ac9a-a59b18fed0c1",
+      "name": "Note a291",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Every day 08:00": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "Get last 24h of leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get last 24h of leads": {
+      "main": [
+        [
+          {
+            "node": "Build digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build digest": {
+      "main": [
+        [
+          {
+            "node": "Email the digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Johannesburg",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

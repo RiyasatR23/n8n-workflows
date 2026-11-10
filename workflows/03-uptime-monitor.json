@@ -1,0 +1,164 @@
+{
+  "name": "Echo · Client site uptime monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "763ba972-8c27-4a10-b11e-cf373338b7f6",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The sites to watch. Add or remove clients here.\nconst sites = [\n  { client: 'Echo Corp',          url: 'https://echocorp.co.za' },\n  { client: 'Example client A',   url: 'https://example.com' },\n  { client: 'Example client B',   url: 'https://example.org' },\n];\nreturn sites.map(s => ({ json: s }));"
+      },
+      "id": "01e2ad5c-5bd8-47c8-98d3-43b9602f8960",
+      "name": "Client sites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "cbba04b3-9b3d-4579-8d3b-69e9a5de57ef",
+      "name": "Check site",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compare each site with its last known state so you only get alerted when something changes\nconst sites = $('Client sites').all();\nconst state = $getWorkflowStaticData('global');\nstate.sites = state.sites || {};\nconst alerts = [];\n$input.all().forEach((item, i) => {\n  const { client, url } = sites[i].json;\n  const status = item.json.statusCode;\n  const up = !item.json.error && status >= 200 && status < 400;\n  const was = state.sites[url];\n  if (was === undefined) { state.sites[url] = up; return; }   // first run: just record\n  if (was !== up) {\n    alerts.push({ json: {\n      message: up\n        ? `✅ ${client} is back up (${url})`\n        : `🚨 ${client} is DOWN (${url}): ${item.json.error ? 'no response' : 'HTTP ' + status}`,\n    }});\n  }\n  state.sites[url] = up;\n});\nreturn alerts;  // no items = nothing changed = no alert"
+      },
+      "id": "0dc99f75-5e3f-4026-8a21-7625d2d85063",
+      "name": "Detect changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "from": "+14155238886",
+        "to": "+27000000000",
+        "toWhatsapp": true,
+        "message": "={{ $json.message }}",
+        "options": {}
+      },
+      "id": "b0571622-2331-4ff9-8e7a-c74a18b3ae0c",
+      "name": "WhatsApp alert",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🩺 Client site uptime monitor\nEvery 15 minutes it requests each client site. A down or recovered site triggers one WhatsApp message via Twilio. State is kept in workflow static data, so you get one alert when a site goes down and one when it recovers, not one every 15 minutes.\n\n**Note:** static data only persists when the workflow is **active**, not on manual test runs.",
+        "height": 250,
+        "width": 560,
+        "color": 5
+      },
+      "id": "e79912ed-3892-422a-888c-0215ae9d423d",
+      "name": "Note fb06",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        -10
+      ]
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Client sites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client sites": {
+      "main": [
+        [
+          {
+            "node": "Check site",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check site": {
+      "main": [
+        [
+          {
+            "node": "Detect changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect changes": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Johannesburg",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

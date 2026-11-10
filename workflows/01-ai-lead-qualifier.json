@@ -1,0 +1,323 @@
+{
+  "name": "Echo · AI lead qualifier",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0c1ffbe2-6c7b-4a2a-b252-a03c318a135e",
+      "name": "Contact form webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "webhookId": "d420b71c-d5cd-4d6c-83fa-6562ef0a0035"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "af2580ca-b036-4623-92a9-01f11e98bce0",
+              "name": "ownerEmail",
+              "value": "you@yourbusiness.co.za",
+              "type": "string"
+            },
+            {
+              "id": "e7871126-bde2-419b-bd02-8c42ed3c18ec",
+              "name": "fromEmail",
+              "value": "Echo Leads <leads@yourdomain.co.za>",
+              "type": "string"
+            },
+            {
+              "id": "51bcbbe8-86c0-4842-b53e-4e1854511ab2",
+              "name": "businessName",
+              "value": "Echo Corp",
+              "type": "string"
+            },
+            {
+              "id": "e24a90e0-fbb8-4fd5-9129-60d0acb26141",
+              "name": "services",
+              "value": "websites, AI chat assistants, n8n workflow automation",
+              "type": "string"
+            },
+            {
+              "id": "e5cd7c28-7360-46a3-9bc3-0ee9441819a0",
+              "name": "model",
+              "value": "claude-haiku-5-5",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eb2b73d4-f22a-4630-9cb3-88a1befbcbec",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalise the form payload and reject obvious junk before spending AI tokens\nconst body = $('Contact form webhook').first().json.body || {};\nconst clean = (v, max) => String(v ?? '').trim().slice(0, max);\nconst lead = {\n  name: clean(body.name, 120),\n  email: clean(body.email, 200).toLowerCase(),\n  phone: clean(body.phone, 40),\n  company: clean(body.company, 160),\n  message: clean(body.message, 3000),\n  source: clean(body.source || 'website', 60),\n};\nconst emailOk = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.email);\nif (!lead.name || !emailOk || lead.message.length < 5) {\n  throw new Error('Invalid lead: name, valid email and message are required');\n}\nreturn [{ json: lead }];"
+      },
+      "id": "24b3d2bd-1835-45e1-8781-3dc532d13345",
+      "name": "Validate input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $('⚙️ Config').first().json.model,\n  max_tokens: 600,\n  system: `You qualify inbound leads for ${$('⚙️ Config').first().json.businessName}, which sells: ${$('⚙️ Config').first().json.services}. Reply with ONLY a JSON object, no prose: {\"score\": \"hot\"|\"warm\"|\"cold\", \"service\": string, \"budget_signal\": string, \"summary\": string (max 25 words), \"reply_draft\": string (friendly, max 90 words, signed by the team, never promise prices)}. Hot = clear need + timeline or budget. Cold = spam, job seekers or no real need.`,\n  messages: [{ role: 'user', content: `Name: ${$json.name}\\nCompany: ${$json.company}\\nMessage: ${$json.message}` }]\n}) }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        }
+      },
+      "id": "58a47f82-6147-46ce-a08a-eb80bc229906",
+      "name": "Claude: qualify lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Claude returns text; pull the JSON object out of it and fall back safely if parsing fails\nconst lead = $('Validate input').first().json;\nconst text = ($json.content || []).filter(b => b.type === 'text').map(b => b.text).join('');\nlet ai;\ntry {\n  ai = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));\n} catch (e) {\n  ai = { score: 'warm', service: 'unknown', budget_signal: 'unknown',\n         summary: 'AI parsing failed - review manually', reply_draft: '' };\n}\nconst score = ['hot', 'warm', 'cold'].includes(ai.score) ? ai.score : 'warm';\nreturn [{ json: { ...lead, ...ai, score } }];"
+      },
+      "id": "2696b881-5b7f-41f9-ae0a-8a2544b0e46d",
+      "name": "Parse AI result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "tableId": "leads",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "name",
+              "fieldValue": "={{ $json.name }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $json.email }}"
+            },
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{ $json.phone }}"
+            },
+            {
+              "fieldId": "company",
+              "fieldValue": "={{ $json.company }}"
+            },
+            {
+              "fieldId": "message",
+              "fieldValue": "={{ $json.message }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $json.source }}"
+            },
+            {
+              "fieldId": "score",
+              "fieldValue": "={{ $json.score }}"
+            },
+            {
+              "fieldId": "service",
+              "fieldValue": "={{ $json.service }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $json.summary }}"
+            },
+            {
+              "fieldId": "reply_draft",
+              "fieldValue": "={{ $json.reply_draft }}"
+            }
+          ]
+        }
+      },
+      "id": "9fb7e181-50d3-4c55-adb6-fd2770c5c40c",
+      "name": "Save lead to Supabase",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: `${$('Parse AI result').first().json.score === 'hot' ? '🔥 HOT' : $('Parse AI result').first().json.score.toUpperCase()} lead: ${$('Parse AI result').first().json.name}`, html: `<h2>New ${$('Parse AI result').first().json.score} lead</h2><p><b>${$('Parse AI result').first().json.name}</b> (${$('Parse AI result').first().json.company || 'no company'})<br>${$('Parse AI result').first().json.email} · ${$('Parse AI result').first().json.phone}</p><p><b>Wants:</b> ${$('Parse AI result').first().json.service}<br><b>Summary:</b> ${$('Parse AI result').first().json.summary}</p><p><b>Their message:</b><br>${$('Parse AI result').first().json.message}</p><hr><p><b>Suggested reply:</b><br>${$('Parse AI result').first().json.reply_draft}</p>` }) }}",
+        "options": {}
+      },
+      "id": "1c15416e-7d36-4ab9-b693-f2e723d86a37",
+      "name": "Email me the lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, message: 'Thanks! We will be in touch within one working day.' }) }}",
+        "options": {}
+      },
+      "id": "1a470e44-0817-4827-a7f0-21d55522bcd6",
+      "name": "Respond to form",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 AI lead qualifier\nA website contact form posts here. Claude scores the lead (hot / warm / cold), picks the service they need and drafts a reply. The lead is stored in Supabase and you get an email with everything you need to respond.\n\n**Credentials:** Header Auth `x-api-key` (Anthropic), Supabase API, Header Auth `Authorization: Bearer re_...` (Resend). Edit **⚙️ Config** first.",
+        "height": 240,
+        "width": 560,
+        "color": 5
+      },
+      "id": "fda4a54a-4455-458c-a5c3-a2069132cc0e",
+      "name": "Note 72fb",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Contact form webhook": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "Validate input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate input": {
+      "main": [
+        [
+          {
+            "node": "Claude: qualify lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: qualify lead": {
+      "main": [
+        [
+          {
+            "node": "Parse AI result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI result": {
+      "main": [
+        [
+          {
+            "node": "Save lead to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save lead to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Email me the lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email me the lead": {
+      "main": [
+        [
+          {
+            "node": "Respond to form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Johannesburg",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

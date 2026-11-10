@@ -1,0 +1,193 @@
+{
+  "name": "Echo · Weekly stats report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "0fe3c633-76e5-424e-8488-993e10139acb",
+      "name": "Every Monday 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9958cba5-f172-478d-8dd3-da1fbb852616",
+              "name": "ownerEmail",
+              "value": "you@yourbusiness.co.za",
+              "type": "string"
+            },
+            {
+              "id": "601da9b6-f291-40f3-ab0f-5d6e6828582b",
+              "name": "fromEmail",
+              "value": "Echo Reports <reports@yourdomain.co.za>",
+              "type": "string"
+            },
+            {
+              "id": "05cde34e-1ec4-4216-92f9-1d0aa9be3640",
+              "name": "reportTitle",
+              "value": "Weekly operations report",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "168aba68-dbd2-4474-8acd-5dd82a82e791",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "daily_metrics",
+        "returnAll": true,
+        "filterType": "manual",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "day",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ days: 14 }).toISODate() }}"
+            }
+          ]
+        }
+      },
+      "id": "054485d1-8b29-4662-8830-160b5b630f41",
+      "name": "Get last 14 days",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        660,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Totals per metric for this week vs last week, with % change. Replaces a 3-hour manual Excel job.\nconst rows = $input.all().map(i => i.json).filter(r => r && r.metric);\nconst today = $now.startOf('day');\nconst thisStart = today.minus({ days: 7 }).toISODate();\nconst sums = {};\nfor (const r of rows) {\n  const bucket = r.day >= thisStart ? 'now' : 'prev';\n  sums[r.metric] = sums[r.metric] || { now: 0, prev: 0 };\n  sums[r.metric][bucket] += Number(r.value) || 0;\n}\nconst fmt = n => n.toLocaleString('en-ZA', { maximumFractionDigits: 1 });\nconst lines = Object.entries(sums).sort().map(([metric, s]) => {\n  const pct = s.prev ? ((s.now - s.prev) / s.prev) * 100 : null;\n  const arrow = pct === null ? '–' : pct >= 0 ? `▲ ${pct.toFixed(1)}%` : `▼ ${Math.abs(pct).toFixed(1)}%`;\n  const colour = pct === null ? '#666' : pct >= 0 ? '#0a7d32' : '#b3261e';\n  return `<tr><td>${metric}</td><td align=\"right\">${fmt(s.now)}</td><td align=\"right\">${fmt(s.prev)}</td>\n          <td align=\"right\" style=\"color:${colour}\">${arrow}</td></tr>`;\n}).join('');\nconst title = $('⚙️ Config').first().json.reportTitle;\nconst html = `<h2 style=\"font-family:sans-serif\">${title}</h2>\n  <p style=\"font-family:sans-serif\">Week ending ${today.minus({ days: 1 }).toFormat('d LLL yyyy')}</p>\n  <table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;font-family:sans-serif;font-size:14px\">\n  <tr style=\"background:#2c0a94;color:#fff\"><th>Metric</th><th>This week</th><th>Last week</th><th>Change</th></tr>\n  ${lines || '<tr><td colspan=\"4\">No data for this period</td></tr>'}</table>`;\nreturn [{ json: { subject: `${title}: week ending ${today.minus({ days: 1 }).toFormat('d LLL')}`, html } }];"
+      },
+      "id": "bfa9876a-9cd1-4e6d-ab8e-39408f99306f",
+      "name": "Compute week-on-week",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: $json.subject, html: $json.html }) }}",
+        "options": {}
+      },
+      "id": "ab950572-b450-42b0-801f-693279109f24",
+      "name": "Email the report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 Weekly stats report\nThe n8n version of my Excel VBA macro, which turned a 3-hour weekly report into one click. Every Monday it reads 14 days of metrics from Supabase, totals each metric for this week and last week, works out the % change and emails a formatted report. Now it takes zero clicks.",
+        "height": 210,
+        "width": 540,
+        "color": 5
+      },
+      "id": "49e79958-4150-4be5-8ef5-a57e8c01760c",
+      "name": "Note d501",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 07:00": {
+      "main": [
+        [
+          {
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "Get last 14 days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get last 14 days": {
+      "main": [
+        [
+          {
+            "node": "Compute week-on-week",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute week-on-week": {
+      "main": [
+        [
+          {
+            "node": "Email the report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Johannesburg",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
