@@ -2,13 +2,13 @@
 
 **Production-style n8n automations for a small digital agency: AI lead qualification, reporting and monitoring.**
 
-I run [Echo Corp](https://echocorp.co.za), a Johannesburg web and automation agency. These are the kinds of workflows I build for the business and for clients, cleaned up and shared with **no credentials inside**. Import any of them into n8n, connect your own accounts and they run.
+I run [Echo Corp](https://echocorp.co.za), a Johannesburg web and automation agency. **These four workflows run in production for Echo Corp**: the lead qualifier is wired to the contact form on echocorp.co.za. They're exported here with **no credentials inside**. Import any of them into n8n, connect your own accounts and they run.
 
 | # | Workflow | Trigger | Connects | What it shows |
 |---|---|---|---|---|
-| 01 | [AI lead qualifier](workflows/01-ai-lead-qualifier.json) | Webhook | Claude API · Supabase · Resend | Webhooks, LLM structured output, input validation, error fallback |
+| 01 | [AI lead qualifier](workflows/01-ai-lead-qualifier.json) | Webhook (live site form) | Claude · Supabase · Resend | Webhooks, LLM structured output, input validation, error fallback |
 | 02 | [Daily lead digest](workflows/02-daily-lead-digest.json) | Schedule (08:00) | Supabase · Resend | Scheduled reporting, date filters, HTML email |
-| 03 | [Client site uptime monitor](workflows/03-uptime-monitor.json) | Schedule (15 min) | HTTP · Twilio WhatsApp | Stateful alerting (no alert spam), error handling |
+| 03 | [Client site uptime monitor](workflows/03-uptime-monitor.json) | Schedule (15 min) | HTTP · Resend | Stateful alerting (no alert spam), error handling |
 | 04 | [Weekly stats report](workflows/04-weekly-stats-report.json) | Schedule (Mon 07:00) | Supabase · Resend | Data aggregation, week-on-week analysis |
 
 ---
@@ -24,12 +24,14 @@ flowchart LR
   E --> F[(Supabase<br/>leads)] --> G[Email me<br/>the lead] --> H[Respond<br/>to form]
 ```
 
-A website contact form posts to the webhook. The workflow:
-1. **Validates** the input (name, valid email, real message) before spending any AI tokens.
-2. Asks **Claude** to return strict JSON: a `hot` / `warm` / `cold` score, the service needed, a 25-word summary and a draft reply.
+The contact form on echocorp.co.za posts to the webhook (name, business, email, phone, *What do you need?*, *Budget*, optional message). The workflow:
+1. **Validates** the input (name, valid email, and either a need or a message) and folds the dropdowns into one message, before spending any AI tokens.
+2. Asks **Claude** (n8n's built-in Anthropic node) to return strict JSON: a `hot` / `warm` / `cold` score, the service needed, a 25-word summary and a draft reply.
 3. **Parses** the JSON defensively. If the model ever returns something unexpected, the lead is still saved and flagged for manual review instead of being lost.
 4. **Saves** the lead to Supabase and **emails** me a summary with the suggested reply, so a hot lead can be answered in minutes.
 5. **Responds** to the form with a thank-you message.
+
+**Lessons from production:** the first live submission had an empty message field and was rejected, so validation now accepts the dropdowns alone. Another came back with Claude's JSON cut off because the model uses tokens to think before answering, so `maxTokens` went from 600 to 2,000. The parse step's fallback meant neither lead was lost.
 
 Test it with [`test/send-test-lead.sh`](test/send-test-lead.sh).
 
@@ -50,10 +52,10 @@ Every morning it pulls the last 24 hours of leads, sorts them hot → cold and s
 
 ```mermaid
 flowchart LR
-  A[Every<br/>15 min] --> B[Client sites] --> C[Check site<br/>HTTP GET] --> D[Detect changes] --> E[WhatsApp alert]
+  A[Every<br/>15 min] --> B[Client sites] --> C[Check site<br/>HTTP GET] --> D[Detect changes] --> E[Config] --> F[Email alert]
 ```
 
-Checks every client website every 15 minutes. It remembers each site's last state in **workflow static data**, so it sends **one** WhatsApp message when a site goes down and **one** when it recovers, instead of one every 15 minutes. Timeouts and DNS failures are caught (`continueRegularOutput`) and counted as "down" rather than crashing the run.
+Checks every client website every 15 minutes. It remembers each site's last state in **workflow static data**, so it sends **one** email when a site goes down and **one** when it recovers, instead of one every 15 minutes. Timeouts and DNS failures are caught (`continueRegularOutput`) and counted as "down" rather than crashing the run.
 
 ## 04 · Weekly stats report
 
@@ -76,24 +78,23 @@ This is the n8n version of an **Excel VBA macro I wrote that turned a 3-hour wee
 
    | Credential | Type in n8n | Value |
    |---|---|---|
-   | Anthropic | Header Auth | Name `x-api-key`, value your Anthropic key |
+   | Anthropic | Anthropic API | n8n Cloud's included AI credits, or your own Anthropic key |
    | Resend | Header Auth | Name `Authorization`, value `Bearer re_...` |
-   | Supabase | Supabase API | Project URL + service-role key |
-   | Twilio | Twilio API | Account SID + auth token (WhatsApp sandbox works for testing) |
+   | Supabase | Supabase API (or Supabase OAuth2) | Project URL + service-role key, or connect with OAuth and pick the project |
 
-4. Edit the **⚙️ Config** node in each workflow: your email, sender address and model.
-5. Run once with **Test workflow**, then switch it to **Active**.
+4. Edit the **⚙️ Config** node in each workflow: your email and sender address. In workflow 03, list your sites in **Client sites**.
+5. Run once with **Execute workflow**, then **Publish** it.
 
 ## Design choices
 
 - **No secrets in the repo.** Every key lives in n8n credentials. The JSON files only hold placeholders.
 - **Config in one node.** Emails, model names and business details sit in a single Set node at the start of each flow, so a client copy takes one edit.
-- **Cheap model where it's enough.** Lead scoring uses Claude Haiku. Change `model` in Config to use a larger one.
+- **Cheap model where it's enough.** Lead scoring uses Claude Haiku. Pick a larger model on the Claude node if you need one.
 - **Fail loudly, not silently.** Bad input throws early, AI parse failures fall back to manual review, and the digest always sends.
 
 ## Built with
 
-n8n · Anthropic Claude API · Supabase (PostgreSQL) · Resend · Twilio · JavaScript
+n8n · Anthropic Claude · Supabase (PostgreSQL) · Resend · JavaScript
 
 ---
 

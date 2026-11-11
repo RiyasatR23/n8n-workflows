@@ -8,7 +8,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "0c1ffbe2-6c7b-4a2a-b252-a03c318a135e",
+      "id": "b443174a-3c27-461f-82dc-a49c00208bc4",
       "name": "Contact form webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -16,47 +16,41 @@
         220,
         300
       ],
-      "webhookId": "d420b71c-d5cd-4d6c-83fa-6562ef0a0035"
+      "webhookId": "8a1da2f4-a11e-4ee0-8fca-339adee873c4"
     },
     {
       "parameters": {
         "assignments": {
           "assignments": [
             {
-              "id": "af2580ca-b036-4623-92a9-01f11e98bce0",
+              "id": "58e05e6e-17d8-44f1-8ed1-1f6b59777ff6",
               "name": "ownerEmail",
               "value": "you@yourbusiness.co.za",
               "type": "string"
             },
             {
-              "id": "e7871126-bde2-419b-bd02-8c42ed3c18ec",
+              "id": "3a6ba61f-bc60-4701-a730-c8efb07ae954",
               "name": "fromEmail",
               "value": "Echo Leads <leads@yourdomain.co.za>",
               "type": "string"
             },
             {
-              "id": "51bcbbe8-86c0-4842-b53e-4e1854511ab2",
+              "id": "498d906c-151b-4ea3-b054-712592bb5c93",
               "name": "businessName",
               "value": "Echo Corp",
               "type": "string"
             },
             {
-              "id": "e24a90e0-fbb8-4fd5-9129-60d0acb26141",
+              "id": "69653c0c-b976-4c11-af69-864f95d59dc9",
               "name": "services",
               "value": "websites, AI chat assistants, n8n workflow automation",
-              "type": "string"
-            },
-            {
-              "id": "e5cd7c28-7360-46a3-9bc3-0ee9441819a0",
-              "name": "model",
-              "value": "claude-haiku-5-5",
               "type": "string"
             }
           ]
         },
         "options": {}
       },
-      "id": "eb2b73d4-f22a-4630-9cb3-88a1befbcbec",
+      "id": "106e81bb-6007-4f21-b925-4c891e8c9398",
       "name": "⚙️ Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -67,9 +61,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalise the form payload and reject obvious junk before spending AI tokens\nconst body = $('Contact form webhook').first().json.body || {};\nconst clean = (v, max) => String(v ?? '').trim().slice(0, max);\nconst lead = {\n  name: clean(body.name, 120),\n  email: clean(body.email, 200).toLowerCase(),\n  phone: clean(body.phone, 40),\n  company: clean(body.company, 160),\n  message: clean(body.message, 3000),\n  source: clean(body.source || 'website', 60),\n};\nconst emailOk = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.email);\nif (!lead.name || !emailOk || lead.message.length < 5) {\n  throw new Error('Invalid lead: name, valid email and message are required');\n}\nreturn [{ json: lead }];"
+        "jsCode": "// Normalise the form payload and reject obvious junk before spending AI tokens\nconst body = $('Contact form webhook').first().json.body || {};\nconst clean = (v, max) => String(v ?? '').trim().slice(0, max);\nconst need = clean(body.need ?? body.service ?? body.whatDoYouNeed, 120);\nconst budget = clean(body.budget, 60);\nconst note = clean(body.message, 3000);\n// Fold the form's dropdowns into one message so Claude and the database see everything\nconst message = [need && `Needs: ${need}`, budget && `Budget: ${budget}`, note].filter(Boolean).join('\\n');\nconst lead = {\n  name: clean(body.name, 120),\n  email: clean(body.email, 200).toLowerCase(),\n  phone: clean(body.phone, 40),\n  company: clean(body.company ?? body.business, 160),\n  message,\n  source: clean(body.source || 'website', 60),\n};\nconst emailOk = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.email);\nif (!lead.name || !emailOk || !message) {\n  throw new Error('Invalid lead: name, valid email and what they need are required');\n}\nreturn [{ json: lead }];"
       },
-      "id": "24b3d2bd-1835-45e1-8781-3dc532d13345",
+      "id": "98be070f-f22c-4e7a-8769-8f41718b879c",
       "name": "Validate input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -80,28 +74,32 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.anthropic.com/v1/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: $('⚙️ Config').first().json.model,\n  max_tokens: 600,\n  system: `You qualify inbound leads for ${$('⚙️ Config').first().json.businessName}, which sells: ${$('⚙️ Config').first().json.services}. Reply with ONLY a JSON object, no prose: {\"score\": \"hot\"|\"warm\"|\"cold\", \"service\": string, \"budget_signal\": string, \"summary\": string (max 25 words), \"reply_draft\": string (friendly, max 90 words, signed by the team, never promise prices)}. Hot = clear need + timeline or budget. Cold = spam, job seekers or no real need.`,\n  messages: [{ role: 'user', content: `Name: ${$json.name}\\nCompany: ${$json.company}\\nMessage: ${$json.message}` }]\n}) }}",
-        "options": {},
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "claude-haiku-5-5"
+        },
+        "messages": {
+          "values": [
             {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
+              "role": "user",
+              "content": "=Name: {{ $json.name }}\nCompany: {{ $json.company }}\nMessage: {{ $json.message }}"
             }
           ]
+        },
+        "simplify": true,
+        "options": {
+          "includeMergedResponse": true,
+          "maxTokens": 2000,
+          "system": "=You qualify inbound leads for {{ $('⚙️ Config').first().json.businessName }}, which sells: {{ $('⚙️ Config').first().json.services }}. Reply with ONLY a JSON object, no prose: {\"score\": \"hot\"|\"warm\"|\"cold\", \"service\": string, \"budget_signal\": string, \"summary\": string (max 25 words), \"reply_draft\": string (friendly, max 90 words, signed by the team, never promise prices)}. Hot = clear need + timeline or budget. Cold = spam, job seekers or no real need."
         }
       },
-      "id": "58a47f82-6147-46ce-a08a-eb80bc229906",
+      "id": "0844171b-48b3-4c82-814e-88876b2cc907",
       "name": "Claude: qualify lead",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
       "position": [
         880,
         300
@@ -109,14 +107,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Claude returns text; pull the JSON object out of it and fall back safely if parsing fails\nconst lead = $('Validate input').first().json;\nconst text = ($json.content || []).filter(b => b.type === 'text').map(b => b.text).join('');\nlet ai;\ntry {\n  ai = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));\n} catch (e) {\n  ai = { score: 'warm', service: 'unknown', budget_signal: 'unknown',\n         summary: 'AI parsing failed - review manually', reply_draft: '' };\n}\nconst score = ['hot', 'warm', 'cold'].includes(ai.score) ? ai.score : 'warm';\nreturn [{ json: { ...lead, ...ai, score } }];"
+        "jsCode": "// Pull Claude's JSON out of the response (handles every output shape) and fall back safely if parsing fails\nconst lead = $('Validate input').first().json;\nconst j = $json;\nlet text = '';\nif (typeof j.merged_response === 'string') text = j.merged_response;\nelse if (Array.isArray(j.content)) text = j.content.filter(b => b.type === 'text').map(b => b.text).join('');\nelse if (typeof j.text === 'string') text = j.text;\nelse text = JSON.stringify(j);\nlet ai;\ntry {\n  ai = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1));\n} catch (e) {\n  ai = { score: 'warm', service: 'unknown', budget_signal: 'unknown',\n         summary: 'AI parsing failed - review manually', reply_draft: '' };\n}\nconst score = ['hot', 'warm', 'cold'].includes(ai.score) ? ai.score : 'warm';\nreturn [{ json: { ...lead, ...ai, score } }];"
       },
-      "id": "2696b881-5b7f-41f9-ae0a-8a2544b0e46d",
+      "id": "f58a7a7e-86e7-4bb6-8a5d-680d88424ce5",
       "name": "Parse AI result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1100,
+        1180,
         300
       ]
     },
@@ -169,12 +167,12 @@
           ]
         }
       },
-      "id": "9fb7e181-50d3-4c55-adb6-fd2770c5c40c",
+      "id": "b0a25f09-d4e3-45ea-ab92-5def677021cc",
       "name": "Save lead to Supabase",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
       "position": [
-        1320,
+        1400,
         300
       ]
     },
@@ -189,12 +187,12 @@
         "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: `${$('Parse AI result').first().json.score === 'hot' ? '🔥 HOT' : $('Parse AI result').first().json.score.toUpperCase()} lead: ${$('Parse AI result').first().json.name}`, html: `<h2>New ${$('Parse AI result').first().json.score} lead</h2><p><b>${$('Parse AI result').first().json.name}</b> (${$('Parse AI result').first().json.company || 'no company'})<br>${$('Parse AI result').first().json.email} · ${$('Parse AI result').first().json.phone}</p><p><b>Wants:</b> ${$('Parse AI result').first().json.service}<br><b>Summary:</b> ${$('Parse AI result').first().json.summary}</p><p><b>Their message:</b><br>${$('Parse AI result').first().json.message}</p><hr><p><b>Suggested reply:</b><br>${$('Parse AI result').first().json.reply_draft}</p>` }) }}",
         "options": {}
       },
-      "id": "1c15416e-7d36-4ab9-b693-f2e723d86a37",
+      "id": "7723fb09-3402-4e23-9881-85a186051e03",
       "name": "Email me the lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1540,
+        1620,
         300
       ]
     },
@@ -204,24 +202,24 @@
         "responseBody": "={{ JSON.stringify({ ok: true, message: 'Thanks! We will be in touch within one working day.' }) }}",
         "options": {}
       },
-      "id": "1a470e44-0817-4827-a7f0-21d55522bcd6",
+      "id": "cdf7b2d7-77ed-4310-888e-2ff35fb9b912",
       "name": "Respond to form",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1760,
+        1840,
         300
       ]
     },
     {
       "parameters": {
-        "content": "## 🤖 AI lead qualifier\nA website contact form posts here. Claude scores the lead (hot / warm / cold), picks the service they need and drafts a reply. The lead is stored in Supabase and you get an email with everything you need to respond.\n\n**Credentials:** Header Auth `x-api-key` (Anthropic), Supabase API, Header Auth `Authorization: Bearer re_...` (Resend). Edit **⚙️ Config** first.",
+        "content": "## 🤖 AI lead qualifier\nA website contact form posts here. Claude scores the lead (hot / warm / cold), picks the service they need and drafts a reply. The lead is stored in Supabase and you get an email with everything you need to respond.\n\n**Credentials:** Anthropic (n8n Cloud AI credits or your own key), Supabase API, Header Auth `Authorization: Bearer re_...` (Resend). Edit **⚙️ Config** first.",
         "height": 240,
         "width": 560,
         "color": 5
       },
-      "id": "fda4a54a-4455-458c-a5c3-a2069132cc0e",
-      "name": "Note 72fb",
+      "id": "2a87ad13-6152-4322-923d-3cac82198ed3",
+      "name": "Note b813",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [

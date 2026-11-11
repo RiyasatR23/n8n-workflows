@@ -12,7 +12,7 @@
           ]
         }
       },
-      "id": "763ba972-8c27-4a10-b11e-cf373338b7f6",
+      "id": "99116f77-945d-4209-89fa-3532ae35bb81",
       "name": "Every 15 minutes",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -23,9 +23,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// The sites to watch. Add or remove clients here.\nconst sites = [\n  { client: 'Echo Corp',          url: 'https://echocorp.co.za' },\n  { client: 'Example client A',   url: 'https://example.com' },\n  { client: 'Example client B',   url: 'https://example.org' },\n];\nreturn sites.map(s => ({ json: s }));"
+        "jsCode": "// The sites to watch. Add or remove clients here.\nconst sites = [\n  { client: 'Echo Corp',          url: 'https://echocorp.co.za' },\n  { client: 'Pro Level Coaching', url: 'https://prolevelhub.online' },\n];\nreturn sites.map(s => ({ json: s }));"
       },
-      "id": "01e2ad5c-5bd8-47c8-98d3-43b9602f8960",
+      "id": "e46b6fa2-2ce5-4e0f-b83b-0bf8ad4c3a6e",
       "name": "Client sites",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -47,7 +47,7 @@
           }
         }
       },
-      "id": "cbba04b3-9b3d-4579-8d3b-69e9a5de57ef",
+      "id": "b665c8a7-b8d3-44b8-bfeb-39eba2d19228",
       "name": "Check site",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -59,9 +59,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Compare each site with its last known state so you only get alerted when something changes\nconst sites = $('Client sites').all();\nconst state = $getWorkflowStaticData('global');\nstate.sites = state.sites || {};\nconst alerts = [];\n$input.all().forEach((item, i) => {\n  const { client, url } = sites[i].json;\n  const status = item.json.statusCode;\n  const up = !item.json.error && status >= 200 && status < 400;\n  const was = state.sites[url];\n  if (was === undefined) { state.sites[url] = up; return; }   // first run: just record\n  if (was !== up) {\n    alerts.push({ json: {\n      message: up\n        ? `✅ ${client} is back up (${url})`\n        : `🚨 ${client} is DOWN (${url}): ${item.json.error ? 'no response' : 'HTTP ' + status}`,\n    }});\n  }\n  state.sites[url] = up;\n});\nreturn alerts;  // no items = nothing changed = no alert"
+        "jsCode": "// Compare each site with its last known state so you only get alerted when something changes\nconst sites = $('Client sites').all();\nconst state = $getWorkflowStaticData('global');\nstate.sites = state.sites || {};\nconst alerts = [];\n$input.all().forEach((item, i) => {\n  const { client, url } = sites[i].json;\n  const status = item.json.statusCode;\n  const up = !item.json.error && status >= 200 && status < 400;\n  const was = state.sites[url];\n  if (was === undefined) { state.sites[url] = up; return; }   // first run: just record\n  if (was !== up) {\n    alerts.push({ json: {\n      message: up\n        ? `✅ ${client} is back up (${url})`\n        : `🚨 ${client} is DOWN (${url}): ${item.json.error ? 'no response' : 'HTTP ' + status}`,\n    }});\n  }\n  state.sites[url] = up;\n});\nif (!alerts.length) return [];  // nothing changed = no alert\nconst lines = alerts.map(a => `<li>${a.json.message}</li>`).join('');\nreturn [{ json: { subject: alerts.length === 1 ? alerts[0].json.message : `${alerts.length} site status changes`,\n  html: `<h3 style=\"font-family:sans-serif\">Echo uptime monitor</h3><ul style=\"font-family:sans-serif\">${lines}</ul>` } }];"
       },
-      "id": "0dc99f75-5e3f-4026-8a21-7625d2d85063",
+      "id": "10b2acb6-b0b5-4925-be6a-c3f47d8cfb7f",
       "name": "Detect changes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -72,16 +72,28 @@
     },
     {
       "parameters": {
-        "from": "+14155238886",
-        "to": "+27000000000",
-        "toWhatsapp": true,
-        "message": "={{ $json.message }}",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ff9a707b-3984-4727-99a3-748bc982e857",
+              "name": "ownerEmail",
+              "value": "you@yourbusiness.co.za",
+              "type": "string"
+            },
+            {
+              "id": "1c33ba4c-4f87-49a3-a7be-64228e01eab8",
+              "name": "fromEmail",
+              "value": "Echo Monitor <monitor@yourdomain.co.za>",
+              "type": "string"
+            }
+          ]
+        },
         "options": {}
       },
-      "id": "b0571622-2331-4ff9-8e7a-c74a18b3ae0c",
-      "name": "WhatsApp alert",
-      "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1,
+      "id": "5097a53e-7391-4e5c-9170-5f7d2841465a",
+      "name": "⚙️ Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [
         1100,
         300
@@ -89,13 +101,33 @@
     },
     {
       "parameters": {
-        "content": "## 🩺 Client site uptime monitor\nEvery 15 minutes it requests each client site. A down or recovered site triggers one WhatsApp message via Twilio. State is kept in workflow static data, so you get one alert when a site goes down and one when it recovers, not one every 15 minutes.\n\n**Note:** static data only persists when the workflow is **active**, not on manual test runs.",
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: $('Detect changes').first().json.subject, html: $('Detect changes').first().json.html }) }}",
+        "options": {}
+      },
+      "id": "63fa6a21-b9da-4182-9760-b08a42167006",
+      "name": "Email alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🩺 Client site uptime monitor\nEvery 15 minutes it requests each client site. A down or recovered site triggers one email via Resend. State is kept in workflow static data, so you get one alert when a site goes down and one when it recovers, not one every 15 minutes.\n\n**Note:** static data only persists when the workflow is **active**, not on manual test runs.",
         "height": 250,
         "width": 560,
         "color": 5
       },
-      "id": "e79912ed-3892-422a-888c-0215ae9d423d",
-      "name": "Note fb06",
+      "id": "2eaf3008-7e9f-465c-8a77-e7a5d0221780",
+      "name": "Note 4dde",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -142,7 +174,18 @@
       "main": [
         [
           {
-            "node": "WhatsApp alert",
+            "node": "⚙️ Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚙️ Config": {
+      "main": [
+        [
+          {
+            "node": "Email alert",
             "type": "main",
             "index": 0
           }

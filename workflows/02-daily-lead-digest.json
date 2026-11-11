@@ -12,7 +12,7 @@
           ]
         }
       },
-      "id": "91abdd73-4867-4399-ab80-ee15f1b4cce6",
+      "id": "b1572fb3-a274-42b9-95f0-521e591c3201",
       "name": "Every day 08:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -26,13 +26,13 @@
         "assignments": {
           "assignments": [
             {
-              "id": "a7fe4879-5d4d-41cb-b578-6fb68ec3d426",
+              "id": "e3885a91-f3b8-4953-8613-010473aec245",
               "name": "ownerEmail",
               "value": "you@yourbusiness.co.za",
               "type": "string"
             },
             {
-              "id": "c2ac9e2f-a54c-43c6-a535-1c0fc2bcd9a1",
+              "id": "1fc95905-4cd4-4a45-a3d9-320ce67779b2",
               "name": "fromEmail",
               "value": "Echo Leads <leads@yourdomain.co.za>",
               "type": "string"
@@ -41,7 +41,7 @@
         },
         "options": {}
       },
-      "id": "5b868691-f832-455b-a0a6-45221804dc56",
+      "id": "14d2c2b3-efa4-4384-8f35-0f73b3951ace",
       "name": "⚙️ Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -67,7 +67,7 @@
           ]
         }
       },
-      "id": "0ab52993-e200-4273-a00f-859d90b2bbb2",
+      "id": "27b6a23a-ccb0-40e5-b75e-bc780082ad7d",
       "name": "Get last 24h of leads",
       "type": "n8n-nodes-base.supabase",
       "typeVersion": 1,
@@ -81,7 +81,7 @@
       "parameters": {
         "jsCode": "// Group yesterday's leads by score and build one HTML email (also sent when there are none)\nconst leads = $input.all().map(i => i.json).filter(l => l && l.email);\nconst order = { hot: 0, warm: 1, cold: 2 };\nleads.sort((a, b) => (order[a.score] ?? 3) - (order[b.score] ?? 3));\nconst count = s => leads.filter(l => l.score === s).length;\nconst esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));\nconst rows = leads.map(l => `<tr><td>${l.score === 'hot' ? '🔥 ' : ''}${esc(l.score)}</td>\n  <td><b>${esc(l.name)}</b><br>${esc(l.email)}</td><td>${esc(l.service)}</td><td>${esc(l.summary)}</td></tr>`).join('');\nconst html = leads.length === 0\n  ? '<p>No new leads in the last 24 hours. Time to do some outreach 💪</p>'\n  : `<p><b>${leads.length}</b> new leads: 🔥 ${count('hot')} hot · ${count('warm')} warm · ${count('cold')} cold</p>\n     <table border=\"1\" cellpadding=\"8\" cellspacing=\"0\" style=\"border-collapse:collapse;font-family:sans-serif;font-size:14px\">\n     <tr style=\"background:#2c0a94;color:#fff\"><th>Score</th><th>Lead</th><th>Service</th><th>Summary</th></tr>${rows}</table>`;\nconst subject = `Lead digest ${$now.toFormat('dd LLL')}: ${leads.length} new (${count('hot')} hot)`;\nreturn [{ json: { subject, html } }];"
       },
-      "id": "88b914fb-465d-4e32-85c0-fd04bc82a2ca",
+      "id": "085fb838-1894-4144-8e3b-eca4591e91ae",
       "name": "Build digest",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -101,7 +101,7 @@
         "jsonBody": "={{ JSON.stringify({ from: $('⚙️ Config').first().json.fromEmail, to: [$('⚙️ Config').first().json.ownerEmail], subject: $json.subject, html: $json.html }) }}",
         "options": {}
       },
-      "id": "18972d3c-ce86-4c41-aac7-69e2e2218796",
+      "id": "57293985-f0e8-4e12-8b69-cf324f9d9938",
       "name": "Email the digest",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -117,8 +117,8 @@
         "width": 520,
         "color": 5
       },
-      "id": "fc9fac93-6647-46dd-ac9a-a59b18fed0c1",
-      "name": "Note a291",
+      "id": "66d1b57d-bf22-4877-b200-7cc367b398f8",
+      "name": "Note 3b71",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
